@@ -12,5 +12,4 @@ Adlib 카드를 이용하여 ROL, IMS 파일을 연주할때 사용되는 뱅크
 
 # 참조
 AdLib Instrument Bank Format
-
 https://moddingwiki.shikadi.net/wiki/AdLib_Instrument_Bank_Format
