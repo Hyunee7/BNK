@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bank</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    html, body, .fullheight {height:100%;}
+    body {background-color:#333333;color:#888888;}
+    a {color:#aaaaaa; text-decoration:none;}
+    /*#insListDiv{height:100%;overflow:auto;}*/
+
+  </style>
+  <script src="kssmcode.js?v1.00"></script>
+  <script>
+    Number.prototype.format = function(){return new String(this).replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}
+
+    var params = URLSearchParams && new URLSearchParams(document.location.search.substring(1));
+    var url = params && params.get("url") && decodeURIComponent(params.get("url"));
+
+
+/*
+responseType json, text, blob, arraybuffer
+     : 빈 문자열은 기본 유형인 와 동일합니다.responseType"text"
+text : 응답 데이터를 문자열로 받을 때 사용됩니다. 서버 응답이 문자열 그대로 반환됩니다.
+json : 서버에서 JSON 형식의 응답 데이터를 받을 때 사용됩니다. 
+       서버 응답이 JSON으로 파싱되어 JavaScript 객체로 반환됩니다.
+blob : 응답 데이터를 이진 데이터(Binary Data)로 받을 때 사용됩니다. 
+       이진 데이터는 파일 다운로드 등과 같은 상황에서 유용합니다.
+arraybuffer : 응답 데이터를 ArrayBuffer 형식으로 받을 때 사용됩니다. 
+              이진 데이터를 효과적으로 처리하는 데 사용됩니다.
+              오디오, 비디오 등의 이진 데이터를 요청하고 처리할 때 사용됩니다.
+document : HTML 문서 또는 XML XML 문서이며, 수신된 데이터의 MIME 유형에 따라 적절합니다.
+*/
+var ajaxcounter = 0;
+var _xhr;
+    function Ajax(param){
+        //console.log(new Date().toISOString(), 'start');
+        var xhr = new XMLHttpRequest();
+        _xhr = xhr; // debug 용
+        ajaxcounter++;
+
+        xhr.open('GET', param.url, true);
+//        xhr.open('GET', url, false);
+        if(param.type) xhr.responseType = param.type; // json, text, blob, arraybuffer
+        xhr.withCredentials = true;
+        xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest'); xhr.setRequestHeader('Access-Control-Allow-Origin', '*');
+
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.setRequestHeader('Accept', 'application/json, text/plain, */*'); 
+
+        // via Cache-Control header:
+        xhr.setRequestHeader("Cache-Control", "no-cache, no-store, max-age=0");
+
+        // fallbacks for IE and older browsers:
+        xhr.setRequestHeader("Expires", "Tue, 01 Jan 1980 1:00:00 GMT");
+        xhr.setRequestHeader("Pragma", "no-cache"); //Edit: I noticed this is required for Chrome some time ago... forgot to mention here
+
+        xhr.onprogress = (e)=>{
+            if (e.lengthComputable){
+                console.log(`Received ${e.loaded} of ${e.total}bytes`)
+            } else {
+                console.log(`Received ${e.loaded} bytes`)
+            }
+        }
+        // Process the response when the request is ready.
+        xhr.onload = function(e) {
+          if (this.status == 200) {
+              //callback(this.response);
+              console.log(new Date().toJSON(),'xhr.responseURL',xhr.responseURL);
+              //console.log(new Date().toJSON(),'this.response',this.response);
+              //new loadList(this.response)
+              //new loadIMS(this.response)
+              //param.callback(this.response);
+              param.callback(this);
+              ajaxcounter--;
+              //console.log(new Date().toJSON(),'ajaxcounter',ajaxcounter)
+              //if(!ajaxcounter) listPut(1);
+          }
+        };
+        xhr.onerror = function(e){
+            console.log('err',e)
+        }
+        xhr.send();
+    }
+
+    //var uInt8Array;
+    var pos;
+    function loadBNK(rs){
+        var uInt8Array = new Uint8Array(rs);
+        console.log(new Date().toJSON(),'uInt8Array',uInt8Array);
+        //uInt8Array = new Uint8Array(rs);
+        ///////////////////////////////////////////////////////////////////////
+        var getByte = (()=>{
+            var position = 0;
+            return (length, type)=>{
+                var start = position;
+                position += length;
+                pos = position;
+                type=type||'';
+                if(type=='int8'){
+                    return uInt8Array[start];
+                } else if(type=='int16'){
+                    return uInt8Array[start+1]<< 8|uInt8Array[start  ];
+                } else if(type=='int32'){
+                    return uInt8Array[start+3]<<24|uInt8Array[start+2]<<16
+                          |uInt8Array[start+1]<< 8|uInt8Array[start  ];
+                } else if(type=='pos'){
+                    position = length;
+                    return position;
+                } else {
+                    returnVal='';
+                    isErr = false;
+                    for(var i=0; i<length; i++){
+                        var h = uInt8Array[ start+i   ];
+                        //console.log(h)
+                        if(h == 0x00) break; // 쓰레기값이 출력되서 EOF?처리함
+                        var l = '';
+                        if(uInt8Array.length > start+i+1) l = uInt8Array[ start+i+1 ];
+
+                        if(h & 0x80) {
+                            if (l == 0x00) {// continue;	/* 하위 바이트 ERROR */
+                                returnVal += '[]';
+                                continue;
+                            }
+
+                            var ch = ((h << 8) & 0xff00) + (l & 0xff);
+                            if (ch >= 0x8861 && ch <= 0xd3b7) {	/* '가'부터 '힝'까지 2,350자 */
+                                returnVal+=KSSMCODE[ch] || '';
+                            } else if (ch >= 0xd931 && ch <= 0xdef1) {	/* 조합형 symbol */
+                                if(!KSSMCODE[ch]){
+                                    isErr = true;
+                                    console.log(new Date().toJSON(),'MM', h, l, ch, ch.toString(16));
+                                }
+                                //returnVal+='MM';
+                                returnVal+=KSSMCODE[ch] || 'MM';
+                            } else {	/* 초성 'ㄱ', 종성 자음, 모음 */
+                                if(!KSSMCODE[ch]){
+                                    isErr = true;
+                                    console.log(new Date().toJSON(),'HH', h, l, ch, ch.toString(16));
+                                }
+                                //returnVal+='HH';
+                                returnVal+=KSSMCODE[ch] || 'HH';
+                            }
+                            i++;
+                        } else {
+                            returnVal += String.fromCharCode(uInt8Array[start+i]).replace(/\x00/g,'');
+                            //returnVal += String.fromCharCode(uInt8Array[start+i]);
+                        }
+                    }
+                    //if(length==64) 
+                    //if(length>2) 
+                    if(isErr)
+                    console.log(new Date().toJSON(),'returnVal',returnVal);
+                    return returnVal;
+                }
+            }
+        })();
+
+        // BNK 해더 정의
+        function BnkHeader(){
+            return {
+                 majorVersion : getByte( 1, 'int8' ) //  1
+                ,minorVersion : getByte( 1, 'int8' ) //  2
+                ,sig          : getByte( 6         ) //  8 'ADLIB-'
+                ,ins_num      : getByte( 2, 'int16') // 10
+                ,max_num      : getByte( 2, 'int16') // 12
+                ,offsetList   : getByte( 4, 'int32') // 16
+                ,offsetTimber : getByte( 4, 'int32') // 20
+                ,filler       : getByte( 8         ) // 28
+            }
+        }
+
+        bnkHeader = new BnkHeader();
+        console.log(new Date().toJSON(),'bnkHeader',bnkHeader);
+        /*
+         fseek (fp,8l,SEEK_SET);
+         fread (&ins_max_num,2,1,fp);
+         fseek (fp,2l,SEEK_CUR);
+         fread (&ins_list_off,4,1,fp);
+         fread (&ins_data_off,4,1,fp);
+        */
+        /** /
+        //getByte(0, 'pos');
+        getByte(81, 'pos');
+        ins_max_num = getByte( 2, 'int16');
+        console.log(new Date().toJSON(),'ins_max_num',ins_max_num);
+        tmp = getByte( 21)
+        ins_list_off = getByte( 4, 'int32')
+        console.log(new Date().toJSON(),'ins_list_off',ins_list_off);
+        ins_data_off = getByte( 4, 'int32')
+        console.log(new Date().toJSON(),'ins_data_off',ins_data_off);
+
+        getByte(10, 'pos');
+        ins_max_num = getByte( 2, 'int16');
+        console.log(new Date().toJSON(),'ins_max_num',ins_max_num);
+        ins_list_off = getByte( 4, 'int32')
+        console.log(new Date().toJSON(),'ins_list_off',ins_list_off);
+        ins_data_off = getByte( 4, 'int32')
+        console.log(new Date().toJSON(),'ins_data_off',ins_data_off);
+        /**/
+/**/
+        //console.log(new Date().toJSON(),'INS Name pos',pos);
+        function BnkEntery(){
+            return {
+                index  : getByte(2, 'int16') //  2
+               ,active : getByte(1, 'int8' ) //  3
+               ,name   : getByte(9         ) // 12
+            }
+
+        }
+        //ins_name = new BnkEntery();
+        //console.log(new Date().toJSON(),'ins_name',ins_name);
+        ins_name = [];
+        //for(i=0; i<bnkHeader.ins_num; i++) ins_name.push( new BnkEntery() );
+        //for(i=0; i<bnkHeader.max_num; i++) ins_name.push( new BnkEntery() );
+        for(i=0; i<bnkHeader.max_num; i++){
+            ins_name.push( new BnkEntery() );
+            if(isErr) console.log('idx', i );
+        }
+
+        console.log(new Date().toJSON(),'ins_name',ins_name);
+        console.log(new Date().toJSON(),'INS Data pos',pos);
+
+        function Operator(){
+            return {
+                ksl       : getByte(1, 'int8' ) //  1
+               ,freqMult  : getByte(1, 'int8' ) //  2
+               ,feedBack  : getByte(1, 'int8' ) //  3
+               ,attack    : getByte(1, 'int8' ) //  4
+               ,sustLevel : getByte(1, 'int8' ) //  5
+               ,sustain   : getByte(1, 'int8' ) //  6
+               ,decay     : getByte(1, 'int8' ) //  7
+               ,release   : getByte(1, 'int8' ) //  8
+               ,output    : getByte(1, 'int8' ) //  9
+               ,am        : getByte(1, 'int8' ) // 10
+               ,vib       : getByte(1, 'int8' ) // 11
+               ,ksr       : getByte(1, 'int8' ) // 12
+               ,fm        : getByte(1, 'int8' ) // 13
+            }
+        }
+
+        function Timbre(){
+            return {
+                mode  : getByte(1, 'int8')  //  1
+               ,voice : getByte(1, 'int8')  //  2
+               ,op0   : Operator()   // 13  // 15
+               ,op1   : Operator()   // 13  // 28
+               ,wave0 : getByte(1, 'int8')  // 29
+               ,wave1 : getByte(1, 'int8')  // 30
+            }
+        }
+
+        //timbre = new Timbre();
+        //console.log(new Date().toJSON(),'timbre',timbre);
+        timbre = [];
+        //for(i=0; i<bnkHeader.ins_num; i++) timbre.push( new Timbre() );
+        for(i=0; i<bnkHeader.max_num; i++) timbre.push( new Timbre() );
+        console.log(new Date().toJSON(),'timbre',timbre);
+        console.log(new Date().toJSON(),'END pos',pos);
+/**/
+        ///////////////////////////////////////////////////////////////////////
+
+    }
+
+function readTemplet(id){
+    //return = document.querySelector(id).innerHTML;
+    var templet = document.querySelector(id).innerHTML;
+    //console.log(templet.replace('/*','').replace('*/','').split('[list]'));
+
+    // 0 header 1 list 2 bottom
+    var arrTemp = templet.replace('/*','').replace('*/','').split('[list]');
+
+    var isHeader=false;
+    var head = [];
+    function header(row){
+        isHeader = true;
+        var tmp=arrTemp[0]; // header
+        row.forEach(item=>tmp=tmp.replace(item.tag,item.value));
+        list.push(tmp);
+    }
+    var list = [];
+    function listRow(row){
+        var tmp=arrTemp[1]; // list
+        row.forEach(item=>tmp=tmp.replace(item.tag,item.value));
+        list.push(tmp);
+    }
+    function draw(elId){
+        var el = document.querySelector(elId);
+        el.innerHTML = (isHeader?head.join(''):arrTemp[0])+list.join('')+(arrTemp[2]||'');
+    }
+
+    return {header:header,list:listRow,draw:draw};
+}
+
+/*
+fetch('some/url', {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/octet-stream',
+    },
+    responseType: 'blob' //혹은 'arraybuffer'도 좋습니다.
+    body: JSON.stringify({ fId: 'someId' })
+})
+*/
+
+    function bnkLoad(bnkfile){
+        //Ajax({url:'KJM1.BNK',type:'arraybuffer',callback:loadBNK});
+        //Ajax({url:'DREAM.BNK',type:'arraybuffer',callback:loadBNK});
+        //Ajax({url:'STANDARD.650.BNK',type:'arraybuffer',callback:loadBNK});
+        //Ajax({url:'STANDARD.997.BNK',type:'arraybuffer',callback:loadBNK});
+        Ajax({url:bnkfile,type:'arraybuffer'
+            ,callback:(xhr)=>{
+                loadBNK(xhr.response);
+                var html = readTemplet('#bnkHeaderTemplet');
+                html.header([{tag:'[majorVersion]',value:bnkHeader.majorVersion}
+                            ,{tag:'[minorVersion]',value:bnkHeader.minorVersion}
+                            ,{tag:'[sig]'         ,value:bnkHeader.sig}
+                            ,{tag:'[ins_num]'     ,value:bnkHeader.ins_num}
+                            ,{tag:'[max_num]'     ,value:bnkHeader.max_num}
+                            ,{tag:'[offsetList]'  ,value:bnkHeader.offsetList}
+                            ,{tag:'[offsetTimber]',value:bnkHeader.offsetTimber}
+                            ,{tag:'[filename]'    ,value:xhr.responseURL.split('/').pop()}]);
+                html.draw('#bnkHeaderDiv');
+
+                var insTemp = readTemplet('#insListTemplet');
+                ins_name.forEach( (item,idx)=>{
+                    if(item.active){
+                        var insName = '<a href="javascript:viewIns('+idx+')">'
+                                    + item.name
+                                    +'</a>';
+                        insTemp.list([{tag:'[no]'      ,value:idx        }
+                                     ,{tag:'[ins_name]',value:insName  }
+                                     ,{tag:'[active]'  ,value:item.active}]);
+                    }
+                });
+                insTemp.draw('#insListDiv');
+            }
+        })
+    }
+
+    function viewIns(idx){
+        var insInfoTemp = readTemplet('#insInfoTemplet');
+        insInfoTemp.header([{tag:'[ins_name]',value:ins_name[idx].name}
+                           ,{tag:'[mode]'      ,value:timbre[idx].mode}
+                           ,{tag:'[voice]'     ,value:timbre[idx].voice}
+                           ,{tag:'[ksl0]'      ,value:timbre[idx].op0.ksl}
+                           ,{tag:'[freqMult0]' ,value:timbre[idx].op0.freqMult}
+                           ,{tag:'[feedBack0]' ,value:timbre[idx].op0.feedBack}
+                           ,{tag:'[attack0]'   ,value:timbre[idx].op0.attack}
+                           ,{tag:'[sustLevel0]',value:timbre[idx].op0.sustLevel}
+                           ,{tag:'[sustain0]'  ,value:timbre[idx].op0.sustain}
+                           ,{tag:'[decay0]'    ,value:timbre[idx].op0.decay}
+                           ,{tag:'[release0]'  ,value:timbre[idx].op0.release}
+                           ,{tag:'[output0]'   ,value:timbre[idx].op0.output}
+                           ,{tag:'[am0]'       ,value:timbre[idx].op0.am}
+                           ,{tag:'[vib0]'      ,value:timbre[idx].op0.vib}
+                           ,{tag:'[ksr0]'      ,value:timbre[idx].op0.ksr}
+                           ,{tag:'[fm0]'       ,value:timbre[idx].op0.fm}
+                           ,{tag:'[ksl1]'      ,value:timbre[idx].op1.ksl}
+                           ,{tag:'[freqMult1]' ,value:timbre[idx].op1.freqMult}
+                           ,{tag:'[feedBack1]' ,value:timbre[idx].op1.feedBack}
+                           ,{tag:'[attack1]'   ,value:timbre[idx].op1.attack}
+                           ,{tag:'[sustLevel1]',value:timbre[idx].op1.sustLevel}
+                           ,{tag:'[sustain1]'  ,value:timbre[idx].op1.sustain}
+                           ,{tag:'[decay1]'    ,value:timbre[idx].op1.decay}
+                           ,{tag:'[release1]'  ,value:timbre[idx].op1.release}
+                           ,{tag:'[output1]'   ,value:timbre[idx].op1.output}
+                           ,{tag:'[am1]'       ,value:timbre[idx].op1.am}
+                           ,{tag:'[vib1]'      ,value:timbre[idx].op1.vib}
+                           ,{tag:'[ksr1]'      ,value:timbre[idx].op1.ksr}
+                           ,{tag:'[fm1]'       ,value:timbre[idx].op1.fm}
+                           ,{tag:'[wave0]'     ,value:timbre[idx].wave0}
+                           ,{tag:'[wave1]'     ,value:timbre[idx].wave1}]);
+        insInfoTemp.draw('#insInfoDiv');
+    }
+
+    function loadBnkList(){
+        /**/
+        Ajax({url:'list.php',type:'json'
+            ,callback:(rs)=>{
+                console.log(rs.response);
+                var html = readTemplet('#bnkListTemplet');
+                //var no=1;
+                rs.response.forEach( (item, idx)=>{
+                    var filename = '<a href="javascript:bnkLoad(\''+item.filename+'\')">'
+                                 + item.filename
+                                 + '</a>';
+                    html.list([{tag:'[no]'      ,value:idx+1              },
+                               {tag:'[filename]',value:filename           },
+                               {tag:'[size]'    ,value:item.size.format() }])
+                } );
+                html.draw('#bnkListDiv');
+                document.querySelector('#insLstTbl').style.height
+                    = (document.body.offsetHeight - document.querySelector('#bnkLstTbl').offsetHeight-20) + 'px';
+            }
+        })
+    }
+
+    window.addEventListener("load", function(e){
+        console.log(new Date().toJSON(),'window.onload START');
+        //Ajax(    'KJM1.BNK');
+        //Ajax( '100MEET.BNK');
+        //Ajax('AWAY-MAN.BNK');
+        //Ajax('HYPER13P.BNK');
+        //Ajax('STANDARD.BNK');
+        //Ajax(  'STANDR.BNK');
+        //Ajax({url:'list.php',})
+        loadBnkList();
+        //bnkLoad();
+        
+        console.log(new Date().toJSON(),'window.onload END');
+    });
+
+  </script>
+</head>
+<body>
+<table id=bnkLstTbl>
+ <tr>
+  <td><div id=bnkListDiv></div></td><td> </td><td valign=bottom><div id=bnkHeaderDiv></div></td>
+ </tr>
+</table>
+<table id=insLstTbl width=100% height=50%>
+ <tr>
+  <td><div id=insListDiv style="height:100%;overflow:auto;"></div></td>
+  <td> </td>
+  <td valign=top><div id=insInfoDiv><table>
+  <!-- <tr style="position: fixed;">
+    <th>No</th><th>악기명</th>
+  </tr> -->
+  <tr>
+    <th>No</th><th>악기명</th>
+  </tr>
+  [list]
+  <tr>
+    <td align=right>[no]</td>
+    <td>[ins_name]</td>
+  </tr>
+  [list]
+</table>
+</div></div></td>
+ </tr>
+</table>
+<div id=insListDiv></div>
+<br>
+<div id=pageDiv></div>
+
+
+<script id=bnkListTemplet>
+/*
+<table>
+  <tr>
+    <th>No</th><th>BNK File</th><th>Size</th>
+  </tr>
+  [list]
+  <tr>
+    <td align=right>[no]</td>
+    <td>[filename]</td>
+    <td align=right>[size]</td>
+  </tr>
+  [list]
+</table>
+*/
+</script>
+<script id=bnkHeaderTemplet>
+/*
+<b style='color:#aaaaaa'>[filename]</b> Header
+<table>
+  <tr><th>majorVersion</th><td>[majorVersion]</td></tr>
+  <tr><th>minorVersion</th><td>[minorVersion]</td></tr>
+  <tr><th>sig</th><td>[sig]</td></tr>
+  <tr><th>ins_num</th><td align=right>[ins_num]</td></tr>
+  <tr><th>max_num</th><td align=right>[max_num]</td></tr>
+  <tr><th>offsetList</th><td align=right>[offsetList]</td></tr>
+  <tr><th>offsetTimber</th><td align=right>[offsetTimber]</td></tr>
+</table>
+*/
+</script>
+<script id=insListTemplet>
+/*
+<table>
+  <!-- <tr style="position: fixed;">
+    <th>No</th><th>악기명</th>
+  </tr> -->
+  <tr>
+    <th>No</th><th>악기명</th>
+  </tr>
+  [list]
+  <tr>
+    <td align=right>[no]</td>
+    <td>[ins_name]</td>
+  </tr>
+  [list]
+</table>
+*/
+</script>
+<script id=insInfoTemplet>
+/*
+<b style="color:#aaaaaa">[ins_name]</b> 악기 정보
+<table>
+    <tr><th colSpan=2>mode</th><td>[mode]</td></tr>
+    <tr><th colSpan=2>voice</th><td>[voice]</td></tr>
+    <tr><th rowSpan=13>op0</th><th>ksl</th><td>[ksl0]</td></tr>
+    <tr>                       <th>freqMult</th><td>[freqMult0]</td></tr>
+    <tr>                       <th>feedBack</th><td>[feedBack0]</td></tr>
+    <tr>                       <th>attack</th><td>[attack0]</td></tr>
+    <tr>                       <th>sustLevel</th><td>[sustLevel0]</td></tr>
+    <tr>                       <th>sustain</th><td>[sustain0]</td></tr>
+    <tr>                       <th>decay</th><td>[decay0]</td></tr>
+    <tr>                       <th>release</th><td>[release0]</td></tr>
+    <tr>                       <th>output</th><td>[output0]</td></tr>
+    <tr>                       <th>am</th><td>[am0]</td></tr>
+    <tr>                       <th>vib</th><td>[vib0]</td></tr>
+    <tr>                       <th>ksr</th><td>[ksr0]</td></tr>
+    <tr>                       <th>fm</th><td>[fm0]</td></tr>
+    <tr><th rowSpan=13>op1</th><th>ksl</th><td>[ksl1]</td></tr>
+    <tr>                       <th>freqMult</th><td>[freqMult1]</td></tr>
+    <tr>                       <th>feedBack</th><td>[feedBack1]</td></tr>
+    <tr>                       <th>attack</th><td>[attack1]</td></tr>
+    <tr>                       <th>sustLevel</th><td>[sustLevel1]</td></tr>
+    <tr>                       <th>sustain</th><td>[sustain1]</td></tr>
+    <tr>                       <th>decay</th><td>[decay1]</td></tr>
+    <tr>                       <th>release</th><td>[release1]</td></tr>
+    <tr>                       <th>output</th><td>[output1]</td></tr>
+    <tr>                       <th>am</th><td>[am1]</td></tr>
+    <tr>                       <th>vib</th><td>[vib1]</td></tr>
+    <tr>                       <th>ksr</th><td>[ksr1]</td></tr>
+    <tr>                       <th>fm</th><td>[fm1]</td></tr>
+    <tr><th colSpan=2>wave0</th><td>[wave0]</td></tr>
+    <tr><th colSpan=2>wave1</th><td>[wave1]</td></tr>
+</table>
+*/
+</script>
+
+</body>
+</html>
