@@ -10,6 +10,8 @@
     body {background-color:#333333;color:#888888;}
     a {color:#aaaaaa; text-decoration:none;}
     /*#insListDiv{height:100%;overflow:auto;}*/
+    /*tbody tr:nth-child(odd) { background-color: #222222; }*/
+    .active {background-color:#444444;}
 
   </style>
   <script src="kssmcode.js?v1.00"></script>
@@ -306,11 +308,19 @@ fetch('some/url', {
 })
 */
 
-    function bnkLoad(bnkfile){
+    var beforeBnkTR = null;
+    function bnkLoad(bnkfile,idx){
         //Ajax({url:'KJM1.BNK',type:'arraybuffer',callback:loadBNK});
         //Ajax({url:'DREAM.BNK',type:'arraybuffer',callback:loadBNK});
         //Ajax({url:'STANDARD.650.BNK',type:'arraybuffer',callback:loadBNK});
         //Ajax({url:'STANDARD.997.BNK',type:'arraybuffer',callback:loadBNK});
+        //console.log('idx',idx);
+        document.querySelector('#bnk'+idx).className='active';
+        if(beforeBnkTR){
+            console.log('beforeBnkTR',beforeBnkTR);
+            beforeBnkTR.className='';
+        }
+        beforeBnkTR = document.querySelector('#bnk'+idx);
         Ajax({url:bnkfile,type:'arraybuffer'
             ,callback:(xhr)=>{
                 loadBNK(xhr.response);
@@ -332,7 +342,8 @@ fetch('some/url', {
                                     + item.name
                                     +'</a>';
                         insTemp.list([{tag:'[no]'      ,value:idx        }
-                                     ,{tag:'[ins_name]',value:insName  }
+                                     ,{tag:'[idx]'     ,value:idx        }
+                                     ,{tag:'[ins_name]',value:insName    }
                                      ,{tag:'[active]'  ,value:item.active}]);
                     }
                 });
@@ -341,12 +352,23 @@ fetch('some/url', {
         })
     }
 
+    var beforeInsTR = null;
     function viewIns(idx){
+        document.querySelector('#ins'+idx).className='active';
+        if(beforeInsTR){
+            console.log('beforeInsTR',beforeInsTR);
+            beforeInsTR.className='';
+        }
+        beforeInsTR = document.querySelector('#ins'+idx);
         var insInfoTemp = readTemplet('#insInfoTemplet');
-        insInfoTemp.header([{tag:'[ins_name]',value:ins_name[idx].name}
-                           ,{tag:'[mode]'      ,value:timbre[idx].mode}
-                           ,{tag:'[voice]'     ,value:timbre[idx].voice}
-                           ,{tag:'[ksl0]'      ,value:timbre[idx].op0.ksl}
+        var modeval = timbre[idx].mode + ' ' + (timbre[idx].mode?'타 악기':'음 악기');
+        //console.log('modeval',modeval)
+        insInfoTemp.header([{tag:'[ins_name]'  ,value:ins_name[idx].name}
+                           ,{tag:'[mode]'      ,value:modeval} // 0 
+                           ,{tag:'[voice]'     ,value:timbre[idx].voice}  //Voice number (percussive only)
+                           // op0 : 변조기 연산자에 대한 등록 값
+                           // op1 : Carrier 연산자에 대한 등록 값
+                           ,{tag:'[ksl0]'      ,value:timbre[idx].op0.ksl} 
                            ,{tag:'[freqMult0]' ,value:timbre[idx].op0.freqMult}
                            ,{tag:'[feedBack0]' ,value:timbre[idx].op0.feedBack}
                            ,{tag:'[attack0]'   ,value:timbre[idx].op0.attack}
@@ -372,8 +394,8 @@ fetch('some/url', {
                            ,{tag:'[vib1]'      ,value:timbre[idx].op1.vib}
                            ,{tag:'[ksr1]'      ,value:timbre[idx].op1.ksr}
                            ,{tag:'[fm1]'       ,value:timbre[idx].op1.fm}
-                           ,{tag:'[wave0]'     ,value:timbre[idx].wave0}
-                           ,{tag:'[wave1]'     ,value:timbre[idx].wave1}]);
+                           ,{tag:'[wave0]'     ,value:timbre[idx].wave0}    // 변조기 파동 선택(OPL 기본 레지스터 0xE0)
+                           ,{tag:'[wave1]'     ,value:timbre[idx].wave1}]); // 캐리어파 선택(OPL 베이스 레지스터 0xE0)
         insInfoTemp.draw('#insInfoDiv');
     }
 
@@ -381,24 +403,33 @@ fetch('some/url', {
         /**/
         Ajax({url:'list.php',type:'json'
             ,callback:(rs)=>{
-                console.log(rs.response);
+                //console.log(rs.response);
                 var html = readTemplet('#bnkListTemplet');
                 //var no=1;
                 rs.response.forEach( (item, idx)=>{
-                    var filename = '<a href="javascript:bnkLoad(\''+item.filename+'\')">'
+                    var filename = '<a href="javascript:bnkLoad(\''+item.filename+'\','+idx+')">'
                                  + item.filename
                                  + '</a>';
                     html.list([{tag:'[no]'      ,value:idx+1              },
                                {tag:'[filename]',value:filename           },
-                               {tag:'[size]'    ,value:item.size.format() }])
+                               {tag:'[size]'    ,value:item.size.format() },
+                               {tag:'[idx]'     ,value:idx      }]);
                 } );
                 html.draw('#bnkListDiv');
-                document.querySelector('#insLstTbl').style.height
-                    = (document.body.offsetHeight - document.querySelector('#bnkLstTbl').offsetHeight-20) + 'px';
+                setTimeout( ()=>{
+                    document.querySelector('#insLstTbl').style.height
+                        = (document.body.offsetHeight - document.querySelector('#bnkLstTbl').offsetHeight-25) + 'px';
+                },500);
             }
         })
     }
-
+/*
+var _ev;
+    window.addEventListener("click", function(ev){
+        _ev=ev;
+        console.log('ev',ev.target)
+    });
+*/
     window.addEventListener("load", function(e){
         console.log(new Date().toJSON(),'window.onload START');
         //Ajax(    'KJM1.BNK');
@@ -419,14 +450,14 @@ fetch('some/url', {
 <body>
 <table id=bnkLstTbl>
  <tr>
-  <td><div id=bnkListDiv></div></td><td> </td><td valign=bottom><div id=bnkHeaderDiv></div></td>
+  <td><div id=bnkListDiv></div></td><td>&nbsp;&nbsp;&nbsp;</td><td valign=bottom align=right><div id=bnkHeaderDiv></div></td>
  </tr>
 </table>
 <table id=insLstTbl width=100% height=50%>
  <tr>
   <td><div id=insListDiv style="height:100%;overflow:auto;"></div></td>
   <td> </td>
-  <td valign=top><div id=insInfoDiv><table>
+  <td valign=top align=right><div id=insInfoDiv><table>
   <!-- <tr style="position: fixed;">
     <th>No</th><th>악기명</th>
   </tr> -->
@@ -455,7 +486,7 @@ fetch('some/url', {
     <th>No</th><th>BNK File</th><th>Size</th>
   </tr>
   [list]
-  <tr>
+  <tr id=bnk[idx]>
     <td align=right>[no]</td>
     <td>[filename]</td>
     <td align=right>[size]</td>
@@ -481,14 +512,14 @@ fetch('some/url', {
 <script id=insListTemplet>
 /*
 <table>
-  <!-- <tr style="position: fixed;">
+  <tr style="position: fixed;background-color:#333333;">
     <th>No</th><th>악기명</th>
-  </tr> -->
+  </tr>
   <tr>
     <th>No</th><th>악기명</th>
   </tr>
   [list]
-  <tr>
+  <tr id=ins[idx]>
     <td align=right>[no]</td>
     <td>[ins_name]</td>
   </tr>
@@ -500,36 +531,24 @@ fetch('some/url', {
 /*
 <b style="color:#aaaaaa">[ins_name]</b> 악기 정보
 <table>
-    <tr><th colSpan=2>mode</th><td>[mode]</td></tr>
-    <tr><th colSpan=2>voice</th><td>[voice]</td></tr>
-    <tr><th rowSpan=13>op0</th><th>ksl</th><td>[ksl0]</td></tr>
-    <tr>                       <th>freqMult</th><td>[freqMult0]</td></tr>
-    <tr>                       <th>feedBack</th><td>[feedBack0]</td></tr>
-    <tr>                       <th>attack</th><td>[attack0]</td></tr>
-    <tr>                       <th>sustLevel</th><td>[sustLevel0]</td></tr>
-    <tr>                       <th>sustain</th><td>[sustain0]</td></tr>
-    <tr>                       <th>decay</th><td>[decay0]</td></tr>
-    <tr>                       <th>release</th><td>[release0]</td></tr>
-    <tr>                       <th>output</th><td>[output0]</td></tr>
-    <tr>                       <th>am</th><td>[am0]</td></tr>
-    <tr>                       <th>vib</th><td>[vib0]</td></tr>
-    <tr>                       <th>ksr</th><td>[ksr0]</td></tr>
-    <tr>                       <th>fm</th><td>[fm0]</td></tr>
-    <tr><th rowSpan=13>op1</th><th>ksl</th><td>[ksl1]</td></tr>
-    <tr>                       <th>freqMult</th><td>[freqMult1]</td></tr>
-    <tr>                       <th>feedBack</th><td>[feedBack1]</td></tr>
-    <tr>                       <th>attack</th><td>[attack1]</td></tr>
-    <tr>                       <th>sustLevel</th><td>[sustLevel1]</td></tr>
-    <tr>                       <th>sustain</th><td>[sustain1]</td></tr>
-    <tr>                       <th>decay</th><td>[decay1]</td></tr>
-    <tr>                       <th>release</th><td>[release1]</td></tr>
-    <tr>                       <th>output</th><td>[output1]</td></tr>
-    <tr>                       <th>am</th><td>[am1]</td></tr>
-    <tr>                       <th>vib</th><td>[vib1]</td></tr>
-    <tr>                       <th>ksr</th><td>[ksr1]</td></tr>
-    <tr>                       <th>fm</th><td>[fm1]</td></tr>
-    <tr><th colSpan=2>wave0</th><td>[wave0]</td></tr>
-    <tr><th colSpan=2>wave1</th><td>[wave1]</td></tr>
+    <tr><th>mode</th><td colSpan=2 align=right>[mode]</td></tr>
+    <tr><th>voice</th><td colSpan=2 align=right>[voice]</td></tr>
+    <tr><th>operstion</th><th>op0</th><th>op1</th></tr>
+    <tr><th>ksl</th><td align=right>[ksl0]</td><td align=right>[ksl1]</td></tr>
+    <tr><th>freqMult</th><td align=right>[freqMult0]</td><td align=right>[freqMult1]</td></tr>
+    <tr><th>feedBack</th><td align=right>[feedBack0]</td><td align=right>[feedBack1]</td></tr>
+    <tr><th>attack</th><td align=right>[attack0]</td><td align=right>[attack1]</td></tr>
+    <tr><th>sustLevel</th><td align=right>[sustLevel0]</td><td align=right>[sustLevel1]</td></tr>
+    <tr><th>sustain</th><td align=right>[sustain0]</td><td align=right>[sustain1]</td></tr>
+    <tr><th>decay</th><td align=right>[decay0]</td><td align=right>[decay1]</td></tr>
+    <tr><th>release</th><td align=right>[release0]</td><td align=right>[release1]</td></tr>
+    <tr><th>output</th><td align=right>[output0]</td><td align=right>[output1]</td></tr>
+    <tr><th>am</th><td align=right>[am0]</td><td align=right>[am1]</td></tr>
+    <tr><th>vib</th><td align=right>[vib0]</td><td align=right>[vib1]</td></tr>
+    <tr><th>ksr</th><td align=right>[ksr0]</td><td align=right>[ksr1]</td></tr>
+    <tr><th>fm</th><td align=right>[fm0]</td><td align=right>[fm1]</td></tr>
+    <tr><th>wave0</th><td colSpan=2 align=right>[wave0]</td></tr>
+    <tr><th>wave1</th><td colSpan=2 align=right>[wave1]</td></tr>
 </table>
 */
 </script>
