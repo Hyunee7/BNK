@@ -12,9 +12,14 @@
     /*#insListDiv{height:100%;overflow:auto;}*/
     /*tbody tr:nth-child(odd) { background-color: #222222; }*/
     .active {background-color:#444444;}
-
+    input#searchkey {
+        background-color:#333333;
+        width: 100%;
+        border: 0px;
+        color:#888888;
+    }
   </style>
-  <script src="kssmcode.js?v1.00"></script>
+  <script src="kssmcode.js?v1.0"></script>
   <script>
     Number.prototype.format = function(){return new String(this).replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}
 
@@ -36,11 +41,11 @@ arraybuffer : 응답 데이터를 ArrayBuffer 형식으로 받을 때 사용됩�
 document : HTML 문서 또는 XML XML 문서이며, 수신된 데이터의 MIME 유형에 따라 적절합니다.
 */
 var ajaxcounter = 0;
-var _xhr;
+//var _xhr;
     function Ajax(param){
         //console.log(new Date().toISOString(), 'start');
         var xhr = new XMLHttpRequest();
-        _xhr = xhr; // debug 용
+        window['_xhr'] = xhr; // debug 용
         ajaxcounter++;
 
         xhr.open('GET', param.url, true);
@@ -65,20 +70,13 @@ var _xhr;
             } else {
                 console.log(`Received ${e.loaded} bytes`)
             }
+            if(param.progress) param.progress(e);
         }
         // Process the response when the request is ready.
         xhr.onload = function(e) {
           if (this.status == 200) {
-              //callback(this.response);
-              console.log(new Date().toJSON(),'xhr.responseURL',xhr.responseURL);
-              //console.log(new Date().toJSON(),'this.response',this.response);
-              //new loadList(this.response)
-              //new loadIMS(this.response)
-              //param.callback(this.response);
               param.callback(this);
               ajaxcounter--;
-              //console.log(new Date().toJSON(),'ajaxcounter',ajaxcounter)
-              //if(!ajaxcounter) listPut(1);
           }
         };
         xhr.onerror = function(e){
@@ -87,78 +85,9 @@ var _xhr;
         xhr.send();
     }
 
-    //var uInt8Array;
-    var pos;
     function loadBNK(rs){
-        var uInt8Array = new Uint8Array(rs);
-        console.log(new Date().toJSON(),'uInt8Array',uInt8Array);
-        //uInt8Array = new Uint8Array(rs);
-        ///////////////////////////////////////////////////////////////////////
-        var getByte = (()=>{
-            var position = 0;
-            return (length, type)=>{
-                var start = position;
-                position += length;
-                pos = position;
-                type=type||'';
-                if(type=='int8'){
-                    return uInt8Array[start];
-                } else if(type=='int16'){
-                    return uInt8Array[start+1]<< 8|uInt8Array[start  ];
-                } else if(type=='int32'){
-                    return uInt8Array[start+3]<<24|uInt8Array[start+2]<<16
-                          |uInt8Array[start+1]<< 8|uInt8Array[start  ];
-                } else if(type=='pos'){
-                    position = length;
-                    return position;
-                } else {
-                    returnVal='';
-                    isErr = false;
-                    for(var i=0; i<length; i++){
-                        var h = uInt8Array[ start+i   ];
-                        //console.log(h)
-                        if(h == 0x00) break; // 쓰레기값이 출력되서 EOF?처리함
-                        var l = '';
-                        if(uInt8Array.length > start+i+1) l = uInt8Array[ start+i+1 ];
-
-                        if(h & 0x80) {
-                            if (l == 0x00) {// continue;	/* 하위 바이트 ERROR */
-                                returnVal += '[]';
-                                continue;
-                            }
-
-                            var ch = ((h << 8) & 0xff00) + (l & 0xff);
-                            if (ch >= 0x8861 && ch <= 0xd3b7) {	/* '가'부터 '힝'까지 2,350자 */
-                                returnVal+=KSSMCODE[ch] || '';
-                            } else if (ch >= 0xd931 && ch <= 0xdef1) {	/* 조합형 symbol */
-                                if(!KSSMCODE[ch]){
-                                    isErr = true;
-                                    console.log(new Date().toJSON(),'MM', h, l, ch, ch.toString(16));
-                                }
-                                //returnVal+='MM';
-                                returnVal+=KSSMCODE[ch] || 'MM';
-                            } else {	/* 초성 'ㄱ', 종성 자음, 모음 */
-                                if(!KSSMCODE[ch]){
-                                    isErr = true;
-                                    console.log(new Date().toJSON(),'HH', h, l, ch, ch.toString(16));
-                                }
-                                //returnVal+='HH';
-                                returnVal+=KSSMCODE[ch] || 'HH';
-                            }
-                            i++;
-                        } else {
-                            returnVal += String.fromCharCode(uInt8Array[start+i]).replace(/\x00/g,'');
-                            //returnVal += String.fromCharCode(uInt8Array[start+i]);
-                        }
-                    }
-                    //if(length==64) 
-                    //if(length>2) 
-                    if(isErr)
-                    console.log(new Date().toJSON(),'returnVal',returnVal);
-                    return returnVal;
-                }
-            }
-        })();
+        var getByte = new GetByte(rs);
+        GetByte.isAscii=true;
 
         // BNK 해더 정의
         function BnkHeader(){
@@ -175,34 +104,8 @@ var _xhr;
         }
 
         bnkHeader = new BnkHeader();
-        console.log(new Date().toJSON(),'bnkHeader',bnkHeader);
-        /*
-         fseek (fp,8l,SEEK_SET);
-         fread (&ins_max_num,2,1,fp);
-         fseek (fp,2l,SEEK_CUR);
-         fread (&ins_list_off,4,1,fp);
-         fread (&ins_data_off,4,1,fp);
-        */
-        /** /
-        //getByte(0, 'pos');
-        getByte(81, 'pos');
-        ins_max_num = getByte( 2, 'int16');
-        console.log(new Date().toJSON(),'ins_max_num',ins_max_num);
-        tmp = getByte( 21)
-        ins_list_off = getByte( 4, 'int32')
-        console.log(new Date().toJSON(),'ins_list_off',ins_list_off);
-        ins_data_off = getByte( 4, 'int32')
-        console.log(new Date().toJSON(),'ins_data_off',ins_data_off);
+        //console.log(new Date().toJSON(),'bnkHeader',bnkHeader);
 
-        getByte(10, 'pos');
-        ins_max_num = getByte( 2, 'int16');
-        console.log(new Date().toJSON(),'ins_max_num',ins_max_num);
-        ins_list_off = getByte( 4, 'int32')
-        console.log(new Date().toJSON(),'ins_list_off',ins_list_off);
-        ins_data_off = getByte( 4, 'int32')
-        console.log(new Date().toJSON(),'ins_data_off',ins_data_off);
-        /**/
-/**/
         //console.log(new Date().toJSON(),'INS Name pos',pos);
         function BnkEntery(){
             return {
@@ -214,16 +117,21 @@ var _xhr;
         }
         //ins_name = new BnkEntery();
         //console.log(new Date().toJSON(),'ins_name',ins_name);
+        // 2025-03-11
+        // header의 filler 가 없는 BNK 파일이 있어 수정함
+        getByte(bnkHeader.offsetList, 'pos');
+        //console.log('bnkHeader.offsetList',bnkHeader.offsetList);
+        //console.log(new Date().toJSON(),'INS Name pos',GetByte.pos);
         ins_name = [];
         //for(i=0; i<bnkHeader.ins_num; i++) ins_name.push( new BnkEntery() );
         //for(i=0; i<bnkHeader.max_num; i++) ins_name.push( new BnkEntery() );
         for(i=0; i<bnkHeader.max_num; i++){
             ins_name.push( new BnkEntery() );
-            if(isErr) console.log('idx', i );
+            if(GetByte.isErr) console.log('idx', i );
         }
 
-        console.log(new Date().toJSON(),'ins_name',ins_name);
-        console.log(new Date().toJSON(),'INS Data pos',pos);
+        //console.log(new Date().toJSON(),'ins_name',ins_name);
+        //console.log(new Date().toJSON(),'INS Data pos',GetByte.pos);
 
         function Operator(){
             return {
@@ -256,20 +164,18 @@ var _xhr;
 
         //timbre = new Timbre();
         //console.log(new Date().toJSON(),'timbre',timbre);
+        // 2025-03-11
+        // header의 filler 가 없는 BNK 파일이 있어 수정함
+        getByte(bnkHeader.offsetTimber, 'pos');
         timbre = [];
         //for(i=0; i<bnkHeader.ins_num; i++) timbre.push( new Timbre() );
         for(i=0; i<bnkHeader.max_num; i++) timbre.push( new Timbre() );
-        console.log(new Date().toJSON(),'timbre',timbre);
-        console.log(new Date().toJSON(),'END pos',pos);
-/**/
-        ///////////////////////////////////////////////////////////////////////
-
+        //console.log(new Date().toJSON(),'timbre',timbre);
+        //console.log(new Date().toJSON(),'END pos',GetByte.pos);
     }
 
 function readTemplet(id){
-    //return = document.querySelector(id).innerHTML;
     var templet = document.querySelector(id).innerHTML;
-    //console.log(templet.replace('/*','').replace('*/','').split('[list]'));
 
     // 0 header 1 list 2 bottom
     var arrTemp = templet.replace('/*','').replace('*/','').split('[list]');
@@ -317,55 +223,110 @@ fetch('some/url', {
         //console.log('idx',idx);
         document.querySelector('#bnk'+idx).className='active';
         if(beforeBnkTR){
-            console.log('beforeBnkTR',beforeBnkTR);
+            //console.log('beforeBnkTR',beforeBnkTR);
             beforeBnkTR.className='';
         }
         beforeBnkTR = document.querySelector('#bnk'+idx);
         Ajax({url:bnkfile,type:'arraybuffer'
             ,callback:(xhr)=>{
                 loadBNK(xhr.response);
+//                console.log('uInt8Array[28]', uInt8Array[28]);
                 var html = readTemplet('#bnkHeaderTemplet');
                 html.header([{tag:'[majorVersion]',value:bnkHeader.majorVersion}
                             ,{tag:'[minorVersion]',value:bnkHeader.minorVersion}
                             ,{tag:'[sig]'         ,value:bnkHeader.sig}
-                            ,{tag:'[ins_num]'     ,value:bnkHeader.ins_num}
-                            ,{tag:'[max_num]'     ,value:bnkHeader.max_num}
-                            ,{tag:'[offsetList]'  ,value:bnkHeader.offsetList}
-                            ,{tag:'[offsetTimber]',value:bnkHeader.offsetTimber}
+                            ,{tag:'[ins_num]'     ,value:bnkHeader.ins_num.format()}
+                            ,{tag:'[max_num]'     ,value:bnkHeader.max_num.format()}
+                            ,{tag:'[offsetList]'  ,value:bnkHeader.offsetList.format()}
+                            ,{tag:'[offsetTimber]',value:bnkHeader.offsetTimber.format()}
                             ,{tag:'[filename]'    ,value:xhr.responseURL.split('/').pop()}]);
-                html.draw('#bnkHeaderDiv');
+                html.draw('#bnkHeaderDiv'); // BNK Header 출력
 
-                var insTemp = readTemplet('#insListTemplet');
-                ins_name.forEach( (item,idx)=>{
-                    if(item.active){
-                        var insName = '<a href="javascript:viewIns('+idx+')">'
-                                    + item.name
-                                    +'</a>';
-                        insTemp.list([{tag:'[no]'      ,value:idx        }
-                                     ,{tag:'[idx]'     ,value:idx        }
-                                     ,{tag:'[ins_name]',value:insName    }
-                                     ,{tag:'[active]'  ,value:item.active}]);
-                    }
-                });
-                insTemp.draw('#insListDiv');
+                putTimbreNameList(); // 뱅크내 악기 목록 출력
+            }
+            ,progress:(e)=>{
+                if (e.lengthComputable){
+                    document.querySelector('#insInfoDiv').innerHTML = `Received ${e.loaded} of ${e.total}bytes`;
+                } else {
+                    document.querySelector('#insInfoDiv').innerHTML = `Received ${e.loaded} bytes`;
+                }
             }
         })
     }
 
-    var beforeInsTR = null;
+
+    // 전체/음/타 악기 표시 토글
+    changeTimberMT.icon = ['🎹','🥁','🎧'];
+    function changeTimberMT(obj){
+        putTimbreNameList.isMT = ++putTimbreNameList.isMT % 3;
+        putTimbreNameList();
+    }
+
+    // 악기명 검색
+    function search(ev){
+        //console.log(ev)
+        if(ev.key == 'Enter') putTimbreNameList();
+    }
+
+    // 뱅크내 악기 목록 출력 Active만
+    putTimbreNameList.isMT = 2; // 악기종류(mode) : 0 음 악기, 1 타 악기, 2 전체
+    function putTimbreNameList(){
+        var insTemp = readTemplet('#insListTemplet');
+        var list = ins_name;
+        console.log('putTimbreNameList.isMT',putTimbreNameList.isMT);
+        if(putTimbreNameList.isMT<2)
+            list = list.filter( (item,idx)=>{return timbre[idx].mode==putTimbreNameList.isMT} );
+        var search='';
+        if(typeof searchkey != 'undefined'){
+            if(searchkey.value||''){
+                search = searchkey.value;
+                list = list.filter( item=>item.name.toUpperCase().indexOf(searchkey.value.toUpperCase())>-1 );
+            }
+        }
+        //ins_name.forEach( (item,idx)=>{
+        insTemp.header([{tag:'[icon]'  ,value:changeTimberMT.icon[ putTimbreNameList.isMT ] }
+                       ,{tag:'[search]',value:search} ]);
+        list.forEach( (item,idx)=>{
+            if(item.active){
+                var mode = timbre[item.index].mode ? '🥁':'🎹';
+                //var mode = ['🎹','🥁'][timbre[idx].mode]; // 1 이외의 값 207 이 발견되어 사용중지함.
+                insTemp.list([{tag:'[no]'      ,value:idx        }
+                             ,{tag:/\[idx\]/g  ,value:item.index }
+                             ,{tag:'[mode]'    ,value:mode       }
+                             //,{tag:'[ins_name]',value:insName  }
+                             ,{tag:'[ins_name]',value:item.name  }
+                             ,{tag:'[active]'  ,value:item.active}]);
+            }
+        });
+        insTemp.draw('#insListDiv');
+        insListDiv.scrollTop=0; // 악기목록 스크롤 위치 초기화
+        setTimeout( ()=>{       // 타이틀 영역 크기 동기화
+            var table = document.querySelector('#insListDiv > table');
+            table.rows[0].cells[0].style.width = table.rows[1].cells[0].offsetWidth + 'px';
+            table.rows[0].cells[1].style.width = table.rows[1].cells[1].offsetWidth + 'px';
+            table.rows[0].cells[2].style.width = table.rows[1].cells[2].offsetWidth + 'px';
+        }, 500);
+    }
+
+    //var beforeInsTR = null;
+    viewIns.beforeInsTR = null;
+    viewIns.percussive = ['','','','','','','Base Drum','Snare Drum','Tom-Tom','Cymbal','Hi-Hat']
     function viewIns(idx){
         document.querySelector('#ins'+idx).className='active';
-        if(beforeInsTR){
-            console.log('beforeInsTR',beforeInsTR);
-            beforeInsTR.className='';
+        if(viewIns.beforeInsTR){
+            viewIns.beforeInsTR.className='';
         }
-        beforeInsTR = document.querySelector('#ins'+idx);
+        viewIns.beforeInsTR = document.querySelector('#ins'+idx);
         var insInfoTemp = readTemplet('#insInfoTemplet');
-        var modeval = timbre[idx].mode + ' ' + (timbre[idx].mode?'타 악기':'음 악기');
+        //var modeval = timbre[idx].mode + ' ' + (timbre[idx].mode?'타 악기':'음 악기');
+        var modeval = timbre[idx].mode + ' ' + (timbre[idx].mode ? '🥁':'🎹');
+        var voice = timbre[idx].voice;
+        if(timbre[idx].voice) voice=timbre[idx].voice + '<font color=#008000>' + viewIns.percussive[ timbre[idx].voice ] + '</font>';
         //console.log('modeval',modeval)
         insInfoTemp.header([{tag:'[ins_name]'  ,value:ins_name[idx].name}
+                           ,{tag:'[idx]'       ,value:idx} 
                            ,{tag:'[mode]'      ,value:modeval} // 0 
-                           ,{tag:'[voice]'     ,value:timbre[idx].voice}  //Voice number (percussive only)
+                           ,{tag:'[voice]'     ,value:voice}  //Voice number (percussive only)
                            // op0 : 변조기 연산자에 대한 등록 값
                            // op1 : Carrier 연산자에 대한 등록 값
                            ,{tag:'[ksl0]'      ,value:timbre[idx].op0.ksl} 
@@ -399,8 +360,8 @@ fetch('some/url', {
         insInfoTemp.draw('#insInfoDiv');
     }
 
+    // 뱅크 파일 목록 읽기
     function loadBnkList(){
-        /**/
         Ajax({url:'list.php',type:'json'
             ,callback:(rs)=>{
                 //console.log(rs.response);
@@ -431,50 +392,60 @@ var _ev;
     });
 */
     window.addEventListener("load", function(e){
-        console.log(new Date().toJSON(),'window.onload START');
-        //Ajax(    'KJM1.BNK');
-        //Ajax( '100MEET.BNK');
-        //Ajax('AWAY-MAN.BNK');
-        //Ajax('HYPER13P.BNK');
-        //Ajax('STANDARD.BNK');
-        //Ajax(  'STANDR.BNK');
-        //Ajax({url:'list.php',})
+        //console.log(new Date().toJSON(),'window.onload START');
         loadBnkList();
-        //bnkLoad();
-        
-        console.log(new Date().toJSON(),'window.onload END');
+        //console.log(new Date().toJSON(),'window.onload END');
     });
 
   </script>
 </head>
 <body>
-<table id=bnkLstTbl>
+<table id=bnkLstTbl width=100%>
  <tr>
-  <td><div id=bnkListDiv></div></td><td>&nbsp;&nbsp;&nbsp;</td><td valign=bottom align=right><div id=bnkHeaderDiv></div></td>
+  <td><div id=bnkListDiv></div></td><td>&nbsp;&nbsp;&nbsp;</td>
+  <td valign=bottom align=right><div id=bnkHeaderDiv>
+<b style='color:#aaaaaa'>[filename]</b> Header
+<table>
+  <tr><th>majorVersion</th><td align=right>[majorVersion]</td></tr>
+  <tr><th>minorVersion</th><td align=right>[minorVersion]</td></tr>
+  <tr><th>서명</th><td>[sig]</td></tr>
+  <tr><th>사용악기수</th><td align=right>[ins_num]</td></tr>
+  <tr><th>전체악기수</th><td align=right>[max_num]</td></tr>
+  <tr><th>악기목록시작</th><td align=right>[offsetList]</td></tr>
+  <tr><th>악기정보시작</th><td align=right>[offsetTimber]</td></tr>
+</table>
+  </div></td>
  </tr>
 </table>
 <table id=insLstTbl width=100% height=50%>
  <tr>
   <td><div id=insListDiv style="height:100%;overflow:auto;"></div></td>
   <td> </td>
-  <td valign=top align=right><div id=insInfoDiv><table>
-  <!-- <tr style="position: fixed;">
-    <th>No</th><th>악기명</th>
-  </tr> -->
-  <tr>
-    <th>No</th><th>악기명</th>
-  </tr>
-  [list]
-  <tr>
-    <td align=right>[no]</td>
-    <td>[ins_name]</td>
-  </tr>
-  [list]
-</table>
-</div></div></td>
+  <td valign=top align=right><div id=insInfoDiv>
+<font size=-1>[idx].</font><b style="color:#aaaaaa">[ins_name]</b> 악기 정보
+<table>
+    <tr><th>mode</th><td colSpan=2 align=right>[mode]</td></tr>
+    <tr><th>voice(타악기🥁용)</th><td colSpan=2 align=right>[voice]</td></tr>
+    <tr style="border-top:1px #434343 solid;border-bottom:1px #434343 solid;"><th>operstion</th><th>op0</th><th>op1</th></tr>
+    <tr><th>키 확장 수준</th><td align=right>[ksl0]</td><td align=right>[ksl1]</td></tr>
+    <tr><th>주파수 승수</th><td align=right>[freqMult0]</td><td align=right>[freqMult1]</td></tr>
+    <tr><th>피드백(op0)</th><td align=right>[feedBack0]</td><td align=right style="color:#444444;">[feedBack1]</td></tr>
+    <tr><th>Attack rate</th><td align=right>[attack0]</td><td align=right>[attack1]</td></tr>
+    <tr><th>Sustain level</th><td align=right>[sustLevel0]</td><td align=right>[sustLevel1]</td></tr>
+    <tr><th>지표 이득(0아니면 적용)</th><td align=right>[sustain0]</td><td align=right>[sustain1]</td></tr>
+    <tr><th>감쇠율</th><td align=right>[decay0]</td><td align=right>[decay1]</td></tr>
+    <tr><th>출시율</th><td align=right>[release0]</td><td align=right>[release1]</td></tr>
+    <tr><th>총 출력 레벨</th><td align=right>[output0]</td><td align=right>[output1]</td></tr>
+    <tr><th>진폭 변조(트레몰로)</th><td align=right>[am0]</td><td align=right>[am1]</td></tr>
+    <tr><th>주파수 비브라토</th><td align=right>[vib0]</td><td align=right>[vib1]</td></tr>
+    <tr><th>키 스케일링/인벨로프 속도</th><td align=right>[ksr0]</td><td align=right>[ksr1]</td></tr>
+    <tr style="border-bottom:1px #434343 solid;"><th>커넥터(op0)</th><td align=right>[fm0]</td><td align=right style="color:#444444;">[fm1]</td></tr>
+    <tr><th>변조기 웨이브 선택</th><td colSpan=2 align=right>[wave0]</td></tr>
+    <tr><th>반송파 선택</th><td colSpan=2 align=right>[wave1]</td></tr>
+</table></div></div></td>
  </tr>
 </table>
-<div id=insListDiv></div>
+
 <br>
 <div id=pageDiv></div>
 
@@ -499,13 +470,13 @@ var _ev;
 /*
 <b style='color:#aaaaaa'>[filename]</b> Header
 <table>
-  <tr><th>majorVersion</th><td>[majorVersion]</td></tr>
-  <tr><th>minorVersion</th><td>[minorVersion]</td></tr>
-  <tr><th>sig</th><td>[sig]</td></tr>
-  <tr><th>ins_num</th><td align=right>[ins_num]</td></tr>
-  <tr><th>max_num</th><td align=right>[max_num]</td></tr>
-  <tr><th>offsetList</th><td align=right>[offsetList]</td></tr>
-  <tr><th>offsetTimber</th><td align=right>[offsetTimber]</td></tr>
+  <tr><th>majorVersion</th><td align=right>[majorVersion]</td></tr>
+  <tr><th>minorVersion</th><td align=right>[minorVersion]</td></tr>
+  <tr><th>서명</th><td>[sig]</td></tr>
+  <tr><th>사용악기수</th><td align=right>[ins_num]</td></tr>
+  <tr><th>전체악기수</th><td align=right>[max_num]</td></tr>
+  <tr><th>악기목록시작</th><td align=right>[offsetList]</td></tr>
+  <tr><th>악기정보시작</th><td align=right>[offsetTimber]</td></tr>
 </table>
 */
 </script>
@@ -513,14 +484,15 @@ var _ev;
 /*
 <table>
   <tr style="position: fixed;background-color:#333333;">
-    <th>No</th><th>악기명</th>
+    <th>No</th><th id=timbreMTTH onclick="changeTimberMT(this)">[icon]</th><th><input placeholder="악기명" id="searchkey" onkeyup="search(event)" value="[search]"></th>
   </tr>
   <tr>
-    <th>No</th><th>악기명</th>
+    <th>No</th><th>🎧</th><th>악기명</th>
   </tr>
   [list]
-  <tr id=ins[idx]>
-    <td align=right>[no]</td>
+  <tr id=ins[idx] onclick="viewIns('[idx]')">
+    <td align=right><font size=-1>[no]</font></td>
+    <td>[mode]</td>
     <td>[ins_name]</td>
   </tr>
   [list]
@@ -529,27 +501,30 @@ var _ev;
 </script>
 <script id=insInfoTemplet>
 /*
-<b style="color:#aaaaaa">[ins_name]</b> 악기 정보
+<font size=-1>[idx].</font><b style="color:#aaaaaa">[ins_name]</b> 악기 정보
 <table>
     <tr><th>mode</th><td colSpan=2 align=right>[mode]</td></tr>
-    <tr><th>voice</th><td colSpan=2 align=right>[voice]</td></tr>
-    <tr><th>operstion</th><th>op0</th><th>op1</th></tr>
-    <tr><th>ksl</th><td align=right>[ksl0]</td><td align=right>[ksl1]</td></tr>
-    <tr><th>freqMult</th><td align=right>[freqMult0]</td><td align=right>[freqMult1]</td></tr>
-    <tr><th>feedBack</th><td align=right>[feedBack0]</td><td align=right>[feedBack1]</td></tr>
-    <tr><th>attack</th><td align=right>[attack0]</td><td align=right>[attack1]</td></tr>
-    <tr><th>sustLevel</th><td align=right>[sustLevel0]</td><td align=right>[sustLevel1]</td></tr>
-    <tr><th>sustain</th><td align=right>[sustain0]</td><td align=right>[sustain1]</td></tr>
-    <tr><th>decay</th><td align=right>[decay0]</td><td align=right>[decay1]</td></tr>
-    <tr><th>release</th><td align=right>[release0]</td><td align=right>[release1]</td></tr>
-    <tr><th>output</th><td align=right>[output0]</td><td align=right>[output1]</td></tr>
-    <tr><th>am</th><td align=right>[am0]</td><td align=right>[am1]</td></tr>
-    <tr><th>vib</th><td align=right>[vib0]</td><td align=right>[vib1]</td></tr>
-    <tr><th>ksr</th><td align=right>[ksr0]</td><td align=right>[ksr1]</td></tr>
-    <tr><th>fm</th><td align=right>[fm0]</td><td align=right>[fm1]</td></tr>
-    <tr><th>wave0</th><td colSpan=2 align=right>[wave0]</td></tr>
-    <tr><th>wave1</th><td colSpan=2 align=right>[wave1]</td></tr>
+    <tr><td colSpan=3><table width=100%><tr><th>voice(타악기🥁용)</th><td align=right>[voice]</td></tr></table></td></tr>
+    <tr style="border-top:1px #434343 solid;border-bottom:1px #434343 solid;"><th>operstion</th><th>op0</th><th>op1</th></tr>
+    <tr><th>키 확장 수준</th><td align=right>[ksl0]</td><td align=right>[ksl1]</td></tr>
+    <tr><th>주파수 승수</th><td align=right>[freqMult0]</td><td align=right>[freqMult1]</td></tr>
+    <tr><th>피드백(op0)</th><td align=right>[feedBack0]</td><td align=right style="color:#444444;">[feedBack1]</td></tr>
+    <tr><th>Attack rate</th><td align=right>[attack0]</td><td align=right>[attack1]</td></tr>
+    <tr><th>Sustain level</th><td align=right>[sustLevel0]</td><td align=right>[sustLevel1]</td></tr>
+    <tr><th>지표 이득(0아니면 적용)</th><td align=right>[sustain0]</td><td align=right>[sustain1]</td></tr>
+    <tr><th>감쇠율</th><td align=right>[decay0]</td><td align=right>[decay1]</td></tr>
+    <tr><th>출시율</th><td align=right>[release0]</td><td align=right>[release1]</td></tr>
+    <tr><th>총 출력 레벨</th><td align=right>[output0]</td><td align=right>[output1]</td></tr>
+    <tr><th>진폭 변조(트레몰로)</th><td align=right>[am0]</td><td align=right>[am1]</td></tr>
+    <tr><th>주파수 비브라토</th><td align=right>[vib0]</td><td align=right>[vib1]</td></tr>
+    <tr><th>키 스케일링/인벨로프 속도</th><td align=right>[ksr0]</td><td align=right>[ksr1]</td></tr>
+    <tr style="border-bottom:1px #434343 solid;"><th>커넥터(op0)</th><td align=right>[fm0]</td><td align=right style="color:#444444;">[fm1]</td></tr>
+    <tr><th>변조기 웨이브 선택</th><td colSpan=2 align=right>[wave0]</td></tr>
+    <tr><th>반송파 선택</th><td colSpan=2 align=right>[wave1]</td></tr>
 </table>
+<font style="color:#444444;">op0 : 변조기 연산자에 대한 등록 값<Br>
+op1 : Carrier 연산자에 대한 등록 값</font>
+
 */
 </script>
 
