@@ -85,6 +85,7 @@ var ajaxcounter = 0;
         xhr.send();
     }
 
+
     function loadBNK(rs){
         var getByte = new GetByte(rs);
         GetByte.isAscii=true;
@@ -135,19 +136,19 @@ var ajaxcounter = 0;
 
         function Operator(){
             return {
-                ksl       : getByte(1, 'int8' ) //  1
-               ,freqMult  : getByte(1, 'int8' ) //  2
-               ,feedBack  : getByte(1, 'int8' ) //  3
-               ,attack    : getByte(1, 'int8' ) //  4
-               ,sustLevel : getByte(1, 'int8' ) //  5
-               ,sustain   : getByte(1, 'int8' ) //  6
-               ,decay     : getByte(1, 'int8' ) //  7
-               ,release   : getByte(1, 'int8' ) //  8
-               ,output    : getByte(1, 'int8' ) //  9
-               ,am        : getByte(1, 'int8' ) // 10
-               ,vib       : getByte(1, 'int8' ) // 11
-               ,ksr       : getByte(1, 'int8' ) // 12
-               ,fm        : getByte(1, 'int8' ) // 13
+                ksl       : getByte(1, 'int8' ) //  1      Key scaling level
+               ,freqMult  : getByte(1, 'int8' ) //  2   multiple / Frequency multiplier
+               ,feedBack  : getByte(1, 'int8' ) //  3      Feedback [op 0 only, op 1 ignored]
+               ,attack    : getByte(1, 'int8' ) //  4      Attack rate
+               ,sustLevel : getByte(1, 'int8' ) //  5   sustain
+               ,sustain   : getByte(1, 'int8' ) //  6   eg / Envelope gain (nonzero value is on)
+               ,decay     : getByte(1, 'int8' ) //  7      Decay rate
+               ,release   : getByte(1, 'int8' ) //  8   Release rate
+               ,output    : getByte(1, 'int8' ) //  9   totalLevel / Total output level
+               ,am        : getByte(1, 'int8' ) // 10      Amplitude modulation (Tremolo)
+               ,vib       : getByte(1, 'int8' ) // 11      Frequency Vibrato
+               ,ksr       : getByte(1, 'int8' ) // 12      Key scaling/envelope rate
+               ,fm        : getByte(1, 'int8' ) // 13   con / Connector [op 0 only, op 1 ignored]
             }
         }
 
@@ -358,6 +359,10 @@ fetch('some/url', {
                            ,{tag:'[wave0]'     ,value:timbre[idx].wave0}    // 변조기 파동 선택(OPL 기본 레지스터 0xE0)
                            ,{tag:'[wave1]'     ,value:timbre[idx].wave1}]); // 캐리어파 선택(OPL 베이스 레지스터 0xE0)
         insInfoTemp.draw('#insInfoDiv');
+        
+        // 악기설정
+        setVoiceTimbre(timbre[idx].voice, timbre[idx])
+        console.log('ins',timbre[idx])
     }
 
     // 뱅크 파일 목록 읽기
@@ -396,6 +401,146 @@ var _ev;
         loadBnkList();
         //console.log(new Date().toJSON(),'window.onload END');
     });
+
+
+
+// OPL2 채널별 슬롯 주소 오프셋 매핑 테이블 (0번~8번 채널)
+const MOD_OFFSET = [0x00, 0x01, 0x02, 0x08, 0x09, 0x0A, 0x10, 0x11, 0x12];
+const CAR_OFFSET = [0x03, 0x04, 0x05, 0x0B, 0x0C, 0x0D, 0x13, 0x14, 0x15];
+
+// AdLib 가상 하드웨어 포트 출력 함수 (포트 쓰기 시뮬레이션)
+function writeReg(reg, value) {
+    // 실제 환경에서는 OPL2 에뮬레이터나 Web Audio API 노드로 데이터가 전달됩니다.
+    console.log(`[AdLib Port] Register 0x${reg.toString(16).toUpperCase()} <- 0x${value.toString(16).toUpperCase()}`);
+}
+
+/**
+ * SetVoiceTimbre: 특정 채널의 음색(Timbre)을 설정하는 함수
+ * @param {number} voice - 채널 번호 (0 ~ 8)
+ * @param {Object} timbre - 1개 채널의 악기 성질을 담은 데이터 구조체
+ */
+    /**
+     * SetVoiceTimbre 함수 내부 동작
+     * @param {number} voice - 채널 번호 (0 ~ 10)
+     * @param {Object} timbre - 26바이트 또는 구조화된 악기(음색) 데이터 패치
+     */ 
+function setVoiceTimbre(voice, timbre) {
+    // 1. 채널 유효성 검사 (OPL2 기준 9개 채널)
+    //if (voice < 0 || voice > 8) return;
+
+    // 2. 해당 채널의 모듈레이터와 캐리어 슬롯 주소 계산
+    const mod = MOD_OFFSET[voice];
+    const car = CAR_OFFSET[voice];
+
+    /*
+    // --- 3. [레지스터 0x20] Tremolo / Vibrato / Sustain / KSR / Frequency Multiplier 설정 ---
+    //writeReg(0x20 + mod, timbre.mod.soundCharacteristic);
+    //writeReg(0x20 + car, timbre.car.soundCharacteristic);
+    writeReg(0x20 + mod, timbre.op0.am<<7 | timbre.op0.vib<<6 | timbre.op0.sustain<<5 | timbre.op0.ksr<<4 | timbre.op0.freqMult );
+    writeReg(0x20 + car, timbre.op1.am<<7 | timbre.op1.vib<<6 | timbre.op1.sustain<<5 | timbre.op1.ksr<<4 | timbre.op1.freqMult );
+
+    // --- 4. [레지스터 0x40] Key Scale Level (KSL) / Total Level (Volume) 설정 ---
+    //writeReg(0x40 + mod, timbre.mod.level);
+    //writeReg(0x40 + car, timbre.car.level);
+    writeReg(0x40 + mod, timbre.op0.ksl<<6 | timbre.op0.output);
+    writeReg(0x40 + car, timbre.op1.ksl<<6 | timbre.op1.output);
+
+    // --- 5. [레지스터 0x60] Attack Rate / Decay Rate 설정 ---
+    //writeReg(0x60 + mod, timbre.mod.attackDecay);
+    //writeReg(0x60 + car, timbre.car.attackDecay);
+    writeReg(0x60 + mod, timbre.op0.attack<<4 | timbre.op0.decay);
+    writeReg(0x60 + car, timbre.op1.attack<<4 | timbre.op1.decay);
+
+    // --- 6. [레지스터 0x80] Sustain Level / Release Rate 설정 ---
+    //writeReg(0x80 + mod, timbre.mod.sustainRelease);
+    //writeReg(0x80 + car, timbre.car.sustainRelease);
+    writeReg(0x80 + mod, timbre.op0.sustLevel<<4 | timbre.op0.release);
+    writeReg(0x80 + car, timbre.op1.sustLevel<<4 | timbre.op1.release);
+        
+    // --- 7. [레지스터 0xE0] Wave Select (파형 선택) 설정 ---
+    //writeReg(0xE0 + mod, timbre.mod.waveSelect);
+    //writeReg(0xE0 + car, timbre.car.waveSelect);
+    writeReg(0xE0 + mod, timbre.wave0);
+    writeReg(0xE0 + car, timbre.wave1);
+    */
+
+    timbre.op1['wave'] = timbre.wave0;
+    timbre.op0['wave'] = timbre.wave1;
+    // 리듬 모드(11채널 체제)에서의 채널 분기 처리
+    if (voice < 6) {    
+        _setOperatorTimbre(mod, timbre.op0)
+        _setOperatorTimbre(car, timbre.op1)
+    } else {
+        // 6 ~ 10 채널: 11채널 리듬 모드의 퍼커션(드럼) 채널 처리
+        // 리듬 채널은 2개 혹은 1개의 전용 단일 오퍼레이터(슬롯)를 사용함
+        switch(voice) {
+            case 6: // Bass Drum (오퍼레이터 12, 15 사용 -> Ch 6의 자원)
+                _setOperatorTimbre(0x10, timbre.op0); // 슬롯 13
+                _setOperatorTimbre(0x13, timbre.op1);   // 슬롯 16
+                //this.opl2.writeReg(0xC6, (timbre.feedback << 1) | timbre.algorithm);
+                writeReg(0xC6, (timbre.op0.feedBack << 1) | timbre.op0.fm);
+                break;
+            case 7: // Snare Drum (오퍼레이터 16 사용 -> Ch 7의 Carrier 슬롯)
+                _setOperatorTimbre(0x14, timbre.op1);   // 슬롯 17
+                break;
+            case 8: // Tom-Tom (오퍼레이터 13 사용 -> Ch 7의 Modulator 슬롯)
+                _setOperatorTimbre(0x11, timbre.op0); // 슬롯 14
+                break;
+            case 9: // Top Cymbal (오퍼레이터 17 사용 -> Ch 8의 Carrier 슬롯)
+                _setOperatorTimbre(0x15, timbre.op1);   // 슬롯 18
+                break;
+            case 10: // Hi-Hat (오퍼레이터 14 사용 -> Ch 8의 Modulator 슬롯)
+                _setOperatorTimbre(0x12, timbre.op0); // 슬롯 15
+                break;
+        }
+    }
+
+    // --- 8. [레지스터 0xC0] Feedback / Connection (알고리즘) 설정 ---
+    // 피드백과 모듈레이션 방식은 두 슬롯 전체(채널 단위)에 영향을 주므로 채널 인덱스를 사용합니다.
+    //writeReg(0xC0 + voice, timbre.feedbackConnection);
+    // 0x30 : 좌,우 스피커 켬
+    writeReg(0xC0 + voice, 0x30 | (timbre.op0.feedBack&0x07)<<1 | timbre.op0.fm);
+}
+
+    /**
+     * 개별 오퍼레이터 슬롯에 악기 성분 데이터를 기입하는 내부 헬퍼 함수
+     */
+    function _setOperatorTimbre(offset, opData) {
+        /*
+        // 0x20: Tremolo, Vibrato, Sustain, KSR, Frequency Multiplier
+        const data20 = (opData.am << 7) | (opData.vib << 6) | (opData.eg << 5) | (opData.ksr << 4) | opData.mult;
+        this.opl2.writeReg(0x20 + offset, data20);
+
+        // 0x40: Key Scale Level, Total Level (Volume)
+        const data40 = (opData.ksl << 6) | opData.tl;
+        this.opl2.writeReg(0x40 + offset, data40);
+
+        // 0x60: Attack Rate, Decay Rate
+        const data60 = (opData.ar << 4) | opData.dr;
+        this.opl2.writeReg(0x60 + offset, data60);
+
+        // 0x80: Sustain Level, Release Rate
+        const data80 = (opData.sl << 4) | opData.rr;
+        this.opl2.writeReg(0x80 + offset, data80);
+
+        // 0xE0: Waveform Select (OPL2에서 활성화된 경우)
+        this.opl2.writeReg(0xE0 + offset, opData.waveSel);
+        */
+        // --- 3. [레지스터 0x20] Tremolo / Vibrato / Sustain / KSR / Frequency Multiplier 설정 ---
+        writeReg(0x20 + offset, opData.am<<7 | opData.vib<<6 | opData.sustain<<5 | opData.ksr<<4 | opData.freqMult );
+
+        // --- 4. [레지스터 0x40] Key Scale Level (KSL) / Total Level (Volume) 설정 ---
+        writeReg(0x40 + offset, opData.ksl<<6 | opData.output); //7654 3210
+
+        // --- 5. [레지스터 0x60] Attack Rate / Decay Rate 설정 ---
+        writeReg(0x60 + offset, opData.attack<<4 | opData.decay);
+
+        // --- 6. [레지스터 0x80] Sustain Level / Release Rate 설정 ---
+        writeReg(0x80 + offset, opData.sustLevel<<4 | opData.release);
+        
+        // --- 7. [레지스터 0xE0] Wave Select (파형 선택) 설정 ---
+        writeReg(0xE0 + offset, opData.wave);
+    }
 
   </script>
 </head>
